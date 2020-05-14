@@ -7,13 +7,15 @@ def value_iteration(S, A, P, gamma=.99, theta=0.0000001):
     V = np.random.random(len(S))
     for i in range(10000):
         old_V = V.copy()
-
         Q = np.zeros((len(S), len(A)), dtype=float)
         for s in S:
             for a in A:
-                for prob, s_prime, reward, done in P[s][a]:
-                    if s < len(old_V) and s_prime < len(old_V):
-                        Q[s][a] += prob * (reward + gamma * old_V[s_prime] * (not done))
+                if s in P:
+                    if a in P[s]:
+                        for prob, s_prime, reward, done in P[s][a]:
+                            if s < len(old_V) and s_prime < len(old_V):
+                                sa = old_V[s_prime]
+                                Q[s][a] += prob * (reward + gamma * old_V[s_prime] * (not done))
             if s < len(old_V):
                 V[s] = Q[s].max()
         if np.all(np.abs(old_V - V) < theta):
@@ -23,73 +25,62 @@ def value_iteration(S, A, P, gamma=.99, theta=0.0000001):
     return pi, V
 
 
-# def value_iteration(P, R, gamma=.99, theta=0.0000001):
-#     vi = mdp.ValueIteration(P, R, discount=gamma)
-#     return vi
-
-
-# S = range(6)
-# A = range(2)
-# ## {action
-# P = {0:
-#      {0:
-#       [(0.3333333333333333, 0, 0.0, False), (0.3333333333333333, 0, 0.0, False),(0.3333333333333333, 4, 0.0, False)],
-#       1:
-#       [(0.3333333333333333, 0, 0.0, False), (0.3333333333333333, 4, 0.0, False),
-#           (0.3333333333333333, 1, 0.0, False)]}}
-
-# pi, V = value_iteration(S, A, P)
-
-# P, R = mdp_exp.forest(S=6, p=0.167)
-# vi = value_iteration(P, R)
-# print(vi)
-# vi.run()
-# print(vi.policy)
-
-
-def create_transition_matrix(is_bad_side, num_states):
+def create_transition_matrix(is_bad_side, num_rolls):
     P = {}
-    action = {}
-    size = len(is_bad_side)
-    next_state_bankroll = []
-    next_state_bankroll.append(0)
-    for j in range(0, num_states):
+    N = len(is_bad_side)
+    next_state_bankrolls = [0]
+    for roll in range(1, num_rolls+1):
         idx = 0
+        normalized_denom = N ** roll
         next_state_bankroll_set = []
-        while idx < len(next_state_bankroll):
-            bankroll = next_state_bankroll[idx]
-            next_prob_states = []
-            quit_game = []
-
-            # possibility of next state
-            for i in range(0, size):
-                if is_bad_side[i] == 1:
-                    next_prob_states.append((1 / size, 0, 0, True))
-                else:
-                    reward = i + 1
-                    next_state = bankroll + reward
-                    next_prob_states.append((1 / size, next_state, reward, False))
-                    next_state_bankroll_set.append(next_state)
-            action[0] = next_prob_states
-            quit_game.append((1, bankroll, 0, True))
-            action[1] = quit_game
+        while idx < len(next_state_bankrolls):
+            bankroll = next_state_bankrolls[idx]
+            next_prob_states, is_terminal = prob_next_state(N, normalized_denom, bankroll, next_state_bankroll_set)
+            if is_terminal:
+                return P
+            action = action_set(next_prob_states, bankroll)
             P[bankroll] = action.copy()
             idx += 1
-        next_state_bankroll = list(set(next_state_bankroll_set))
+
+        next_state_bankrolls = list(set(next_state_bankroll_set))
     return P
 
-# def prob_next_state(size):
 
+def prob_next_state(N, normalized_denom, bankroll, next_state_bankroll_set):
+    next_prob_states = []
+    reward_prob_sum = 0
+    for i in range(0, N):
+        if is_bad_side[i] == 1:
+            next_prob_states.append((1 / normalized_denom, 0, bankroll*-1, True))
+            reward_prob_sum += (1 / normalized_denom) * (bankroll*-1)
+        else:
+            reward = i + 1
+            next_state = bankroll + reward
+            next_prob_states.append((1 / normalized_denom, next_state, reward, False))
+            reward_prob_sum += (1 / normalized_denom) * reward
+            next_state_bankroll_set.append(next_state)
+    if reward_prob_sum <= 0:
+        return next_prob_states, True
+    return next_prob_states, False
+
+
+def action_set(next_prob_states, bankroll):
+    action = {0: next_prob_states}
+    quit_game = [(1, bankroll, 0, True)]
+    action[1] = quit_game
+    return action
 
 
 is_bad_side = [1, 1, 1, 0, 0, 0]
 # is_bad_side = [1,1,1,1,0,0,0,0,1,0,1,0,1,1,0,1,0,0,0,1,0]
 # is_bad_side = [1,1,1,1,1,1,0,1,0,1,1,0,1,0,1,0,0,1,0,0,1,0]
-num_states = 2
-P = create_transition_matrix(is_bad_side, num_states)
+num_rolls = 2
+P = create_transition_matrix(is_bad_side, num_rolls)
 print(P)
-S = P.keys()
+S = list(range(0, 7))
 A = list(range(0, 2))
 
-pi, v = value_iteration(S, A, P, gamma=0.95)
+pi, v = value_iteration(S, A, P, gamma=1)
 print(np.mean(v))
+print(v)
+print(pi)
